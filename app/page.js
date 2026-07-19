@@ -58,9 +58,9 @@ function parseCeo(text) {
     const m = text.match(/\{[\s\S]*\}/);
     const j = JSON.parse(m ? m[0] : text);
     const formats = (j.formats || []).filter((f) => FORMAT_LABELS[f]);
-    return { plan: j.plan || text, formats: formats.length ? formats : ["text", "carousel", "reels"] };
+    return { plan: j.plan || text, formats: formats.length ? formats : ["text", "picture", "reels"] };
   } catch {
-    return { plan: text, formats: ["text", "carousel", "reels"] };
+    return { plan: text, formats: ["text", "picture", "reels"] };
   }
 }
 
@@ -131,6 +131,25 @@ export default function Home() {
         )
       );
 
+      let imageUrl = null;
+      if (pieces.picture) {
+        const pm = pieces.picture.match(/\[PROMPT\]([\s\S]*?)\[\/PROMPT\]/);
+        const iprompt = pm ? pm[1].trim() : "";
+        if (iprompt) {
+          try {
+            setAgent("picture", "working");
+            const ir = await fetch("/api/image", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ prompt: iprompt }),
+            });
+            const idata = await ir.json();
+            if (ir.ok && idata.url) imageUrl = idata.url;
+          } catch {}
+          setAgent("picture", "done");
+        }
+      }
+
       setAgent("ceo", "working");
       const piecesSummary = formats.map((f) => `--- ${FORMAT_LABELS[f]} ---\n${pieces[f]}`).join("\n\n");
       const final = await callAgent("final", {
@@ -140,7 +159,7 @@ export default function Home() {
       });
       setAgent("ceo", "done");
 
-      setOutputs({ plan, cmo, research, pieces, formats, final });
+      setOutputs({ plan, cmo, research, pieces, formats, final, imageUrl });
       setPanelOpen(true);
     } catch (e) {
       setError(e.message);
@@ -258,9 +277,18 @@ export default function Home() {
                 <div className="content md" dangerouslySetInnerHTML={{ __html: md(outputs.research) }} />
               </details>
               {outputs.formats.map((f) => (
-                <details className="piece" key={f}>
+                <details className="piece" key={f} open={f === "picture" && !!outputs.imageUrl}>
                   <summary>{FORMAT_LABELS[f]}</summary>
                   <div className="content">
+                    {f === "picture" && outputs.imageUrl && (
+                      <a href={outputs.imageUrl} target="_blank" rel="noreferrer">
+                        <img
+                          src={outputs.imageUrl}
+                          alt="Generated marketing visual"
+                          style={{ width: "100%", borderRadius: 12, marginBottom: 10, border: "1px solid var(--border)" }}
+                        />
+                      </a>
+                    )}
                     <div className="md" dangerouslySetInnerHTML={{ __html: md(outputs.pieces[f]) }} />
                     <button className="copybtn" onClick={() => navigator.clipboard.writeText(outputs.pieces[f])}>
                       Copy
