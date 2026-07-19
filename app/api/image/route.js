@@ -16,26 +16,37 @@ export async function POST(req) {
     return Response.json({ error: "OPENAI_API_KEY is not set. Image generation needs an OpenAI key." }, { status: 500 });
   }
 
-  try {
-    const r = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_IMAGE_MODEL || "dall-e-3",
-        prompt: String(prompt).slice(0, 3800),
-        n: 1,
-        size: "1024x1024",
-      }),
-    });
-    const data = await r.json();
-    if (!r.ok) {
-      return Response.json({ error: data?.error?.message || "Image API error" }, { status: 500 });
+  const models = [process.env.OPENAI_IMAGE_MODEL || "gpt-image-1", "dall-e-3", "dall-e-2"];
+  let lastError = "Image API error";
+
+  for (const model of models) {
+    try {
+      const r = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          prompt: String(prompt).slice(0, 3800),
+          n: 1,
+          size: "1024x1024",
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        lastError = data?.error?.message || "Image API error";
+        continue;
+      }
+      const item = data.data?.[0];
+      const url = item?.url || (item?.b64_json ? `data:image/png;base64,${item.b64_json}` : null);
+      if (url) return Response.json({ url, model });
+      lastError = "No image returned";
+    } catch (e) {
+      lastError = e.message || "Request failed";
     }
-    return Response.json({ url: data.data?.[0]?.url || null });
-  } catch (e) {
-    return Response.json({ error: e.message || "Request failed" }, { status: 500 });
   }
+
+  return Response.json({ error: lastError }, { status: 500 });
 }
